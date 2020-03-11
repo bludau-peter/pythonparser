@@ -20,10 +20,9 @@ def parse_file(filename):
     json_tree = []
 
     def localize(node, json_node):
-        json_node['lineno'] = str(node.first_token.start[0])
-        json_node['col'] = str(node.first_token.start[1])
-        json_node['end_line_no'] = str(node.last_token.end[0])
-        json_node['end_col'] = str(node.last_token.end[1])
+        json_pos_and_length = extract_pos_and_length(node, node)
+        json_node['pos'] = str(json_pos_and_length[0])
+        json_node['length'] = str(json_pos_and_length[1])
 
     def gen_identifier(identifier, node_type = 'identifier', node=None):
         pos = len(json_tree)
@@ -149,10 +148,19 @@ def parse_file(filename):
         if (len(children) != 0):
             json_node['children'] = children
         return pos
+    
+    def extract_pos_and_length(node, other_node):
+        try:
+            return [node.startpos, other_node.endpos - node.startpos]
+        except:
+            try:
+                return [node.first_token.startpos, other_node.last_token.endpos - node.first_token.startpos]
+            except:
+                pass
+        return [-1, -1]
 
     traverse(tree)
     return json_tree
-
 
 def json2xml(tree):
     lines = []
@@ -173,26 +181,16 @@ def json2xml(tree):
     return "\n".join(convert_node(0))
 
 
-def parse(filename):
-    try:
-        json_tree = parse_file(filename)
-        return json2xml(json_tree)
-
-    except (UnicodeEncodeError, UnicodeDecodeError):
-        pass
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Parse python3 file')
     parser.add_argument('filename', type=str, help='Filename')
-    parser.add_argument('--noprintxml', action="store_true", help='Show')
-    parser.add_argument('--printjson', action="store_true", help='Show json')
+    parser.add_argument('-f', '--format', choices=["xml", "json"], help="Print format", default="xml")
 
     args = parser.parse_args()
     json_tree = parse_file(args.filename)
-    xml = json2xml(json_tree)
 
-    if not args.noprintxml:
+    if args.format == "json":
+        print(json.dumps(json_tree, separators=(',', ':'), ensure_ascii=False))
+    else:
+        xml = json2xml(json_tree)
         print(xml)
-    if args.printjson:
-        print(json_tree)

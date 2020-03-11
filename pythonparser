@@ -3,17 +3,10 @@
 import sys
 import json as json
 import ast
-import jsontree
 import asttokens
 from xml.sax.saxutils import quoteattr
+import argparse
 
-def PrintUsage():
-    sys.stderr.write("""
-Usage:
-    parse_python.py <file>
-
-""")
-    exit(1)
 
 def read_file_to_string(filename):
     f = open(filename, 'rt')
@@ -26,17 +19,19 @@ def parse_file(filename):
     tree = asttokens.ASTTokens(read_file_to_string(filename), parse=True).tree
 
     json_tree = []
+
+    def localize(node, json_node):
+        json_pos_and_length = extract_pos_and_length(node, node)
+        json_node['pos'] = str(json_pos_and_length[0])
+        json_node['length'] = str(json_pos_and_length[1])
+
     def gen_identifier(identifier, node_type = 'identifier', node=None):
         pos = len(json_tree)
         json_node = {}
         json_tree.append(json_node)
         json_node['type'] = node_type
         json_node['value'] = identifier
-        
-        json_pos_and_length = extract_pos_and_length(node, node)
-        json_node['pos'] = str(json_pos_and_length[0])
-        json_node['length'] = str(json_pos_and_length[1])
-
+        localize(node, json_node)
         return pos
 
     def traverse_list(l, node_type = 'list', node = None):
@@ -44,14 +39,7 @@ def parse_file(filename):
         json_node = {}
         json_tree.append(json_node)
         json_node['type'] = node_type
-        
-        if (len(l) > 0):
-            json_pos_and_length = extract_pos_and_length(l[0], l[-1])
-        else:
-            json_pos_and_length = extract_pos_and_length(node, node)
-        json_node['pos'] = str(json_pos_and_length[0])
-        json_node['length'] = str(json_pos_and_length[1])
-
+        localize(node, json_node)
         children = []
         for item in l:
             children.append(traverse(item))
@@ -65,11 +53,7 @@ def parse_file(filename):
         json_node = {}
         json_tree.append(json_node)
         json_node['type'] = type(node).__name__
-        
-        json_pos_and_length = extract_pos_and_length(node, node)
-        json_node['pos'] = str(json_pos_and_length[0])
-        json_node['length'] = str(json_pos_and_length[1])
-        
+        localize(node, json_node)
         children = []
         if isinstance(node, ast.Name):
             json_node['value'] = node.id
@@ -169,38 +153,37 @@ def parse_file(filename):
         return [-1, -1]
 
     traverse(tree)
-    return json.dumps(json_tree, separators=(',', ':'), ensure_ascii=False)
+    return json_tree
 
-def write(i, indent_level = 0):
-    global lines
-    indent_string = '  '
-    indent = indent_string * indent_level
-    node = tree[i]
-    label_attr = ' label=' + quoteEscape(node["value"])  if node['value'] else ''
-    lines.append(indent + '<tree type="' + node['type'] + '"' + label_attr + ' pos="' + str(node['pos']) + '" length="' + str(node['length']) + '">')
-    for child in node["children"]:
-        write(int(child), indent_level + 1)
-    lines.append(indent + '</tree>')
+def json2xml(tree):
+    lines = []
+    def convert_node(i, indent_level=0):
+        node = tree[i]
+        line = "\t" * indent_level + "<{}".format(node['type'])
+        for key in ['value', 'lineno', 'col', 'end_line_no', 'end_col']:
+            if key in node:
+                line += (' {}={}'.format(key, quoteattr(str(node[key]))))
+        line += ">"
+        lines.append(line)
+        if "children" in node:
+            for child in node["children"]:
+                convert_node(int(child), indent_level + 1)
+        lines.append("\t" * indent_level + "</" + node["type"] + ">")
+        return lines
 
-def quoteEscape(x):
-    return quoteattr(x);
+    return "\n".join(convert_node(0))
+
 
 if __name__ == "__main__":
-    try:
-        text = open(sys.argv[1], "r+").read()
+    parser = argparse.ArgumentParser(description='Parse python3 file')
+    parser.add_argument('filename', type=str, help='Filename')
+    parser.add_argument('-f', '--format', choices=["xml", "json"], help="Print format", default="xml")
 
-        json_file = parse_file(sys.argv[1])
-        tree = jsontree.JSONTreeDecoder().decode(json_file)
+    args = parser.parse_args()
+    json_tree = parse_file(args.filename)
 
-        x = tree[0]
-        x['length'] = len(text)
-        lines = []
-        lines.append("<root>")
-        lines.append("<context></context>")
-        write(0)
-        lines.append("</root>")
-
-        print('\n'.join(lines))
-
-    except (UnicodeEncodeError, UnicodeDecodeError):
-        pass
+    if args.format == "json":
+        print(json.dumps(json_tree, separators=(',', ':'), ensure_ascii=False))
+    else:
+        xml = json2xml(json_tree)
+        print(xml)
