@@ -21,10 +21,9 @@ def parse_file(filename):
     json_tree = []
 
     def localize(node, json_node):
-        json_node['line_no'] = str(node.first_token.start[0])
-        json_node['col'] = str(node.first_token.start[1])
-        json_node['end_line_no'] = str(node.last_token.end[0])
-        json_node['end_col'] = str(node.last_token.end[1])
+        json_pos_and_length = extract_pos_and_length(node, node)
+        json_node['pos'] = str(json_pos_and_length[0])
+        json_node['length'] = str(json_pos_and_length[1])
 
     def gen_identifier(identifier, node_type = 'identifier', node=None):
         pos = len(json_tree)
@@ -46,6 +45,7 @@ def parse_file(filename):
             children.append(traverse(item))
         if (len(children) != 0):
             json_node['children'] = children
+
         return pos
 
     def traverse(node):
@@ -54,7 +54,6 @@ def parse_file(filename):
         json_tree.append(json_node)
         json_node['type'] = type(node).__name__
         localize(node, json_node)
-
         children = []
         if isinstance(node, ast.Name):
             json_node['value'] = node.id
@@ -140,11 +139,21 @@ def parse_file(filename):
 
         if (len(children) != 0):
             json_node['children'] = children
+
         return pos
+
+    def extract_pos_and_length(node, other_node):
+        try:
+            return [node.startpos, other_node.endpos - node.startpos]
+        except:
+            try:
+                return [node.first_token.startpos, other_node.last_token.endpos - node.first_token.startpos]
+            except:
+                pass
+        return [-1, -1]
 
     traverse(tree)
     return json_tree
-
 
 def json2xml(tree):
     lines = []
