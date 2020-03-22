@@ -166,16 +166,18 @@ def json2xml(tree):
     lines = []
     def convert_node(i, indent_level=0):
         node = tree[i]
-        line = "\t" * indent_level + "<{}".format(node['type'])
-        for key in ['value', 'lineno', 'col', 'end_line_no', 'end_col']:
+        line = "\t" * indent_level + "<tree "
+        keys = ['type', 'value', 'pos', 'length']
+        tree_keys = ['type', 'label', 'pos', 'length']
+        for i, key in enumerate(keys):
             if key in node:
-                line += (' {}={}'.format(key, quoteattr(str(node[key]))))
+                line += (' {}={}'.format(tree_keys[i], quoteattr(str(node[key]))))
         line += ">"
         lines.append(line)
         if "children" in node:
             for child in node["children"]:
                 convert_node(int(child), indent_level + 1)
-        lines.append("\t" * indent_level + "</" + node["type"] + ">")
+        lines.append("\t" * indent_level + "</tree>")
         return lines
 
     return "\n".join(convert_node(0))
